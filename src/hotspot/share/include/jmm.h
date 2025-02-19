@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2003, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2003, 2023, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -79,6 +79,8 @@ typedef enum {
   JMM_GC_TIME_MS                     = 9,    /* Total accumulated time spent in collection */
   JMM_GC_COUNT                       = 10,   /* Total number of collections */
   JMM_JVM_UPTIME_MS                  = 11,   /* The JVM uptime in milliseconds */
+  JMM_JVM_RESTORE_START_TIME_MS      = 12,   /* Time when the JVM started restore operation */
+  JMM_JVM_UPTIME_SINCE_RESTORE_MS    = 13,   /* The JVM uptime since restore */
 
   JMM_INTERNAL_ATTRIBUTE_INDEX       = 100,
   JMM_CLASS_LOADED_BYTES             = 101,  /* Number of bytes loaded instance classes */
@@ -314,7 +316,8 @@ typedef struct jmmInterface_1_ {
   void         (JNICALL *SetVMGlobal)            (JNIEnv *env,
                                                   jstring flag_name,
                                                   jvalue  new_value);
-  void*        reserved6;
+  jlong        (JNICALL *GetTotalThreadAllocatedMemory)
+                                                 (JNIEnv *env);
   jobjectArray (JNICALL *DumpThreads)            (JNIEnv *env,
                                                   jlongArray ids,
                                                   jboolean lockedMonitors,

@@ -325,6 +325,7 @@ Thread::Thread() {
   }
 
   MACOS_AARCH64_ONLY(DEBUG_ONLY(_wx_init = false));
+  _in_asgct = false;
 }
 
 void Thread::initialize_thread_current() {
@@ -3346,7 +3347,12 @@ void JavaThread::prepare(jobject jni_thread, ThreadPriority prio) {
 }
 
 ThreadStatistics* JavaThread::get_thread_stat() const {
-  return UseWispMonitor ? WispThread::current(const_cast<JavaThread*>(this))->_thread_stat : _thread_stat;
+  // `current_coroutine` may be null
+  if (UseWispMonitor && !this->is_Wisp_thread() && (const_cast<JavaThread*>(this))->current_coroutine()) {
+    return WispThread::current(const_cast<JavaThread*>(this))->_thread_stat;
+  } else {
+    return _thread_stat;
+  }
 }
 
 oop JavaThread::current_park_blocker() {
@@ -3853,8 +3859,25 @@ void Threads::initialize_jsr292_core_classes(TRAPS) {
   initialize_class(vmSymbols::java_lang_invoke_MethodHandleNatives(), CHECK);
 }
 
+jint Threads::check_for_restore(JavaVMInitArgs* args) {
+#ifdef LINUX
+  if (Arguments::is_restore_option_set(args)) {
+    Arguments::parse_options_for_restore(args);
+    os::Linux::restore();
+    if (!CRaCIgnoreRestoreIfUnavailable) {
+      // FIXME switch to unified hotspot logging
+      warning("cannot restore");
+      return JNI_ERR;
+    }
+  }
+#endif
+  return JNI_OK;
+}
+
 jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   extern void JDK_Version_init();
+
+  if (check_for_restore(args) != JNI_OK) return JNI_ERR;
 
   // Preinitialize version info.
   VM_Version::early_initialize();
@@ -3918,6 +3941,10 @@ jint Threads::create_vm(JavaVMInitArgs* args, bool* canTryAgain) {
   if (PauseAtStartup) {
     os::pause();
   }
+
+#ifdef LINUX
+  os::Linux::vm_create_start();
+#endif
 
   HOTSPOT_VM_INIT_BEGIN();
 

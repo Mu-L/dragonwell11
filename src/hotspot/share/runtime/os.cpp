@@ -1229,11 +1229,6 @@ bool is_pointer_bad(intptr_t* ptr) {
   return !is_aligned(ptr, sizeof(uintptr_t)) || !os::is_readable_pointer(ptr);
 }
 
-// Native stack isn't walkable for RISCV this way.
-// Native C frame and Java frame have different structure on RISCV.
-// A seperate implementation is provided under linux_riscv for RISCV.
-
-#if !defined(RISCV) || defined(ZERO)
 // Looks like all platforms can use the same function to check if C
 // stack is walkable beyond current frame. The check for fp() is not
 // necessary on Sparc, but it's harmless.
@@ -1265,7 +1260,7 @@ bool os::is_first_C_frame(frame* fr) {
 
   return false;
 }
-#endif
+
 
 // Set up the boot classpath.
 
@@ -1371,6 +1366,14 @@ bool os::set_boot_path(char fileSep, char pathSep) {
   FREE_C_HEAP_ARRAY(char, base_classes);
 
   return false;
+}
+
+bool os::file_exists(const char* filename) {
+  struct stat statbuf;
+  if (filename == NULL || strlen(filename) == 0) {
+    return false;
+  }
+  return os::stat(filename, &statbuf) == 0;
 }
 
 /*
@@ -1872,6 +1875,13 @@ bool os::release_memory(char* addr, size_t bytes) {
     res = pd_release_memory(addr, bytes);
   }
   return res;
+}
+
+void os::cleanup_memory(char* addr, size_t bytes) {
+  char* start = (char*)align_up(addr, os::vm_page_size());
+  char* end = (char*)align_down(addr + bytes, os::vm_page_size());
+  os::uncommit_memory(start, end - start);
+  os::commit_memory(start, end - start, false);
 }
 
 void os::pretouch_memory(void* start, void* end, size_t page_size) {

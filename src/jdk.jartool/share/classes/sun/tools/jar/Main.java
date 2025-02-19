@@ -149,8 +149,9 @@ public class Main {
      * nflag: Perform jar normalization at the end
      * pflag: preserve/don't strip leading slash and .. component from file name
      * dflag: print module descriptor
+     * kflag: keep existing file
      */
-    boolean cflag, uflag, xflag, tflag, vflag, flag0, Mflag, iflag, nflag, pflag, dflag;
+    boolean cflag, uflag, xflag, tflag, vflag, flag0, Mflag, iflag, nflag, pflag, dflag, kflag;
 
     boolean suppressDeprecateMsg = false;
 
@@ -283,6 +284,9 @@ public class Main {
                     }
                 }
                 expand();
+                if (!ok) {
+                    return false;
+                }
                 if (!moduleInfos.isEmpty()) {
                     // All actual file entries (excl manifest and module-info.class)
                     Set<String> jentries = new HashSet<>();
@@ -357,6 +361,9 @@ public class Main {
                     tmpFile = createTemporaryFile("tmpjar", ".jar");
                 }
                 expand();
+                if (!ok) {
+                    return false;
+                }
                 try (FileInputStream in = (fname != null) ? new FileInputStream(inputFile)
                         : new FileInputStream(FileDescriptor.in);
                      FileOutputStream out = new FileOutputStream(tmpFile);
@@ -578,6 +585,9 @@ public class Main {
                         case '0':
                             flag0 = true;
                             break;
+                        case 'k':
+                            kflag = true;
+                            break;
                         case 'i':
                             if (cflag || uflag || xflag || tflag) {
                                 usageError(getMsg("error.multiple.main.operations"));
@@ -610,6 +620,9 @@ public class Main {
         if (!cflag && !tflag && !xflag && !uflag && !iflag && !dflag) {
             usageError(getMsg("error.bad.option"));
             return false;
+        }
+        if (kflag && !xflag) {
+            warn(formatMsg("warn.option.is.ignored", "--keep-old-files/-k/k"));
         }
 
         /* parse file arguments */
@@ -1442,6 +1455,12 @@ public class Main {
                 output(formatMsg("out.create", name));
             }
         } else {
+            if (f.exists() && kflag) {
+                if (vflag) {
+                    output(formatMsg("out.kept", name));
+                }
+                return rc;
+            }
             if (f.getParent() != null) {
                 File d = new File(f.getParent());
                 if (!d.exists() && !d.mkdirs() || !d.isDirectory()) {

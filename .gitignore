@@ -1,6 +1,7 @@
 /build/
 /dist/
 /.idea/
+/.vscode/
 nbproject/private/
 /webrev
 /.src-rev
@@ -15,3 +16,4 @@ NashornProfile.txt
 **/JTwork/**
 /compile_commands.json
 /.cache
+*.swp

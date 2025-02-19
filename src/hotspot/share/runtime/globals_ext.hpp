@@ -87,6 +87,37 @@
   product(bool, AppCDSVerifyClassPathOrder, true,                           \
           "Verify classpath order between the dump phase and replay phase") \
                                                                             \
+  product(bool, G1BarrierSimple, false,                                     \
+          "Use simple G1 post barrier")                                     \
+                                                                            \
+  product(bool, ReduceNMethodSize, false,                                   \
+          "Move immutable data of nmethod out of code cache")               \
+                                                                            \
+    product(bool, UseBigDecimalOpt, true,                                   \
+          "use binary search in zero stripping of BigDecimal")              \
+                                                                            \
+  product(bool, CRaCValidateBeforeRestore, true,                            \
+          "Validate OS,JVM,CPU before restore")                             \
+                                                                            \
+  product(bool, CRaCUnprivileged, false,                                    \
+          "Run criuengine as unprivileged")                                 \
+  product(ccstr, CRaCRestoreInheritPipeFds, NULL,                           \
+        "Specify the pipe fds that inherit from parent process that need"   \
+        "to restore.If there are multiple fds, separate them with comma.")  \
+                                                                            \
+  product(ccstr, CRaCAppendOnlyLogFiles, NULL,                              \
+        "Files that no need to be closed when do checkpointing."            \
+        "These files must open with write and append mode first."           \
+        "*: all matched files."                                             \
+        "*.log,*.txt: match given extension files."                         \
+        "/x/a.log,/y/b.log: match by full file path")                       \
+                                                                            \
+  product(bool, PolymorphicInlining, false,                                 \
+          "Inline caching multiple type of receivers")                      \
+                                                                            \
+  product(uintx, MorphismLimit, 2,                                          \
+          "Max call site's morphism we care about")                         \
+                                                                            \
   //add new AJDK specific flags here
 
 

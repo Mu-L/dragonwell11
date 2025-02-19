@@ -729,6 +729,8 @@ typedef PaddedEnd<ObjectMonitor>              PaddedObjectMonitor;
   nonstatic_field(nmethod,                     _entry_point,                                  address)                               \
   nonstatic_field(nmethod,                     _verified_entry_point,                         address)                               \
   nonstatic_field(nmethod,                     _osr_entry_point,                              address)                               \
+  nonstatic_field(nmethod,                     _immutable_data,                               address)                               \
+  nonstatic_field(nmethod,                     _immutable_data_size,                          int)                                   \
   volatile_nonstatic_field(nmethod,            _lock_count,                                   jint)                                  \
   volatile_nonstatic_field(nmethod,            _stack_traversal_mark,                         long)                                  \
   nonstatic_field(nmethod,                     _compile_id,                                   int)                                   \
@@ -955,7 +957,7 @@ typedef PaddedEnd<ObjectMonitor>              PaddedObjectMonitor;
   c2_nonstatic_field(Node,                     _outmax,                                       node_idx_t)                            \
   c2_nonstatic_field(Node,                     _idx,                                          const node_idx_t)                      \
   c2_nonstatic_field(Node,                     _class_id,                                     juint)                                 \
-  c2_nonstatic_field(Node,                     _flags,                                        jushort)                               \
+  c2_nonstatic_field(Node,                     _flags,                                        juint)                                 \
                                                                                                                                      \
   c2_nonstatic_field(Compile,                  _root,                                         RootNode*)                             \
   c2_nonstatic_field(Compile,                  _unique,                                       uint)                                  \
@@ -2443,6 +2445,7 @@ typedef PaddedEnd<ObjectMonitor>              PaddedObjectMonitor;
   declare_constant(Deoptimization::Reason_array_check)                    \
   declare_constant(Deoptimization::Reason_intrinsic)                      \
   declare_constant(Deoptimization::Reason_bimorphic)                      \
+  declare_constant(Deoptimization::Reason_polymorphic)                    \
   declare_constant(Deoptimization::Reason_profile_predicate)              \
   declare_constant(Deoptimization::Reason_unloaded)                       \
   declare_constant(Deoptimization::Reason_uninitialized)                  \

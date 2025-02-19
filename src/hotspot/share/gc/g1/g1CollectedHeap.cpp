@@ -1208,6 +1208,12 @@ void G1CollectedHeap::resize_heap_if_necessary() {
   // we'll try to make the capacity smaller than it, not greater).
   maximum_desired_capacity =  MAX2(maximum_desired_capacity, min_heap_size);
 
+  if (Universe::heap()->do_cleanup_unused()) {
+    // HeapRegionManager::shrink_by do not allow remove all regions.
+    // Make sure at least one is there.
+    maximum_desired_capacity = HeapRegion::GrainBytes;
+  }
+
   if (capacity_after_gc < minimum_desired_capacity) {
     // Don't expand unless it's significant
     size_t expand_bytes = minimum_desired_capacity - capacity_after_gc;
@@ -2181,6 +2187,12 @@ void G1CollectedHeap::heap_region_par_iterate_from_start(HeapRegionClosure* cl,
   _hrm.par_iterate(cl, hrclaimer, 0);
 }
 
+void G1CollectedHeap::heap_region_par_iterate_chunk_based(HeapRegionClosure* cl,
+                                                          HeapRegionChunkClaimer* chunk_claimer,
+                                                          uint worker_id) const {
+  _hrm.par_iterate(cl, chunk_claimer, chunk_claimer->offset_for_worker(worker_id));
+}
+
 void G1CollectedHeap::collection_set_iterate(HeapRegionClosure* cl) {
   _collection_set.iterate(cl);
 }
@@ -2471,7 +2483,7 @@ G1CollectedHeap* G1CollectedHeap::heap() {
 
 void G1CollectedHeap::gc_prologue(bool full) {
   // always_do_update_barrier = false;
-  assert(InlineCacheBuffer::is_empty(), "should have cleaned up ICBuffer");
+  assert(UseCompactObjectHeaders || InlineCacheBuffer::is_empty(), "should have cleaned up ICBuffer");
 
   // This summary needs to be printed before incrementing total collections.
   g1_rem_set()->print_periodic_summary_info("Before GC RS summary", total_collections());
@@ -2671,7 +2683,9 @@ class RegisterHumongousWithInCSetFastTestClosure : public HeapRegionClosure {
           if (g1h->is_in_closed_subset(ct->addr_for(card_ptr))) {
             if (*card_ptr != G1CardTable::dirty_card_val()) {
               *card_ptr = G1CardTable::dirty_card_val();
-              _dcq.enqueue(card_ptr);
+              if (!G1BarrierSimple) {
+                _dcq.enqueue(card_ptr);
+              }
             }
           }
         }
@@ -3188,6 +3202,7 @@ protected:
   G1RootProcessor*         _root_processor;
   TaskTerminator           _terminator;
   uint                     _n_workers;
+  HeapRegionChunkClaimer   _chunk_claimer;
 
 public:
   G1ParTask(G1CollectedHeap* g1h, G1ParScanThreadStateSet* per_thread_states, RefToScanQueueSet *task_queues, G1RootProcessor* root_processor, uint n_workers)
@@ -3197,7 +3212,8 @@ public:
       _queues(task_queues),
       _root_processor(root_processor),
       _terminator(n_workers, _queues),
-      _n_workers(n_workers)
+      _n_workers(n_workers),
+      _chunk_claimer(n_workers)
   {}
 
   void work(uint worker_id) {
@@ -3223,7 +3239,7 @@ public:
       // treating the nmethods visited to act as roots for concurrent marking.
       // We only want to make sure that the oops in the nmethods are adjusted with regard to the
       // objects copied by the current evacuation.
-      _g1h->g1_rem_set()->oops_into_collection_set_do(pss, worker_id);
+      _g1h->g1_rem_set()->oops_into_collection_set_do(pss, worker_id, &_chunk_claimer);
 
       double strong_roots_sec = os::elapsedTime() - start_strong_roots_sec;
 
@@ -3718,8 +3734,12 @@ void G1CollectedHeap::redirty_logged_cards() {
   dirty_card_queue_set().reset_for_par_iteration();
   workers()->run_task(&redirty_task);
 
-  DirtyCardQueueSet& dcq = G1BarrierSet::dirty_card_queue_set();
-  dcq.merge_bufferlists(&dirty_card_queue_set());
+  if (G1BarrierSimple) {
+    dirty_card_queue_set().clear();
+  } else {
+    DirtyCardQueueSet& dcq = G1BarrierSet::dirty_card_queue_set();
+    dcq.merge_bufferlists(&dirty_card_queue_set());
+  }
   assert(dirty_card_queue_set().completed_buffers_num() == 0, "All should be consumed");
 
   g1_policy()->phase_times()->record_redirty_logged_cards_time_ms((os::elapsedTime() - redirty_logged_cards_start) * 1000.0);

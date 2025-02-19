@@ -366,6 +366,12 @@ size_t DefNewGeneration::adjust_for_thread_increase(size_t new_size_candidate,
 }
 
 void DefNewGeneration::compute_new_size() {
+  if (Universe::heap()->do_cleanup_unused()) {
+    os::cleanup_memory((char*)eden()->top(), (char*)eden()->end() - (char*)eden()->top());
+    os::cleanup_memory((char*)from()->top(), (char*)from()->end() - (char*)from()->top());
+    os::cleanup_memory((char*)to()->top(), (char*)to()->end() - (char*)to()->top());
+  }
+
   // This is called after a GC that includes the old generation, so from-space
   // will normally be empty.
   // Note that we check both spaces, since if scavenge failed they revert roles.
@@ -887,10 +893,6 @@ void DefNewGeneration::gc_epilogue(bool full) {
     } else if (seen_incremental_collection_failed) {
       log_trace(gc)("DefNewEpilogue: cause(%s), not full, seen_failed, will_clear_seen_failed",
                             GCCause::to_string(gch->gc_cause()));
-      assert(gch->gc_cause() == GCCause::_scavenge_alot ||
-             (GCCause::is_user_requested_gc(gch->gc_cause()) && UseConcMarkSweepGC && ExplicitGCInvokesConcurrent) ||
-             !gch->incremental_collection_failed(),
-             "Twice in a row");
       seen_incremental_collection_failed = false;
     }
 #endif // ASSERT

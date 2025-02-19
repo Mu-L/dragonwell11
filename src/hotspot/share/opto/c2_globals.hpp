@@ -354,6 +354,12 @@
   notproduct(bool, TraceNewVectors, false,                                  \
           "Trace creation of Vector nodes")                                 \
                                                                             \
+  diagnostic(bool, MergeStores, true,                                       \
+          "Optimize stores by combining values into larger store")          \
+                                                                            \
+  develop(bool, TraceMergeStores, false,                                    \
+          "Trace creation of merged stores")                                \
+                                                                            \
   product_pd(bool, OptoBundling,                                            \
           "Generate nops to fill i-cache lines")                            \
                                                                             \
@@ -774,6 +780,9 @@
                                                                             \
   product(bool, UseProfiledLoopPredicate, true,                             \
           "move predicates out of loops based on profiling data")           \
+                                                                            \
+  diagnostic(bool, InlineSecondarySupersTest, true,                \
+          "Inline the secondary supers hash lookup.")                       \
 
 C2_FLAGS(DECLARE_DEVELOPER_FLAG, \
          DECLARE_PD_DEVELOPER_FLAG, \

@@ -1409,14 +1409,15 @@ const char* Arguments::get_property(const char* key) {
   return PropertyList_get_value(system_properties(), key);
 }
 
-bool Arguments::add_property(const char* prop, PropertyWriteable writeable, PropertyInternal internal) {
+void Arguments::get_key_value(const char* prop, const char** key, const char** value) {
+  assert(key != NULL, "key should not be NULL");
+  assert(value != NULL, "value should not be NULL");
   const char* eq = strchr(prop, '=');
-  const char* key;
-  const char* value = "";
 
   if (eq == NULL) {
     // property doesn't have a value, thus use passed string
-    key = prop;
+    *key = prop;
+    *value = "";
   } else {
     // property have a value, thus extract it and save to the
     // allocated string
@@ -1424,10 +1425,17 @@ bool Arguments::add_property(const char* prop, PropertyWriteable writeable, Prop
     char* tmp_key = AllocateHeap(key_len + 1, mtArguments);
 
     jio_snprintf(tmp_key, key_len + 1, "%s", prop);
-    key = tmp_key;
+    *key = tmp_key;
 
-    value = &prop[key_len + 1];
+    *value = &prop[key_len + 1];
   }
+}
+
+bool Arguments::add_property(const char* prop, PropertyWriteable writeable, PropertyInternal internal) {
+  const char* key = NULL;
+  const char* value = NULL;
+
+  get_key_value(prop, &key, &value);
 
   if (strcmp(key, "java.compiler") == 0) {
     process_java_compiler_argument(value);
@@ -2420,6 +2428,56 @@ jint Arguments::parse_xss(const JavaVMOption* option, const char* tail, intx* ou
   return JNI_OK;
 }
 
+bool Arguments::is_restore_option_set(const JavaVMInitArgs* args) {
+  const char* tail;
+  // iterate over arguments
+  for (int index = 0; index < args->nOptions; index++) {
+    const JavaVMOption* option = args->options + index;
+    if (match_option(option, "-XX:CRaCRestoreFrom", &tail)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Arguments::parse_options_for_restore(const JavaVMInitArgs* args) {
+  const char *tail = NULL;
+
+  // iterate over arguments
+  for (int index = 0; index < args->nOptions; index++) {
+    bool is_absolute_path = false;  // for -agentpath vs -agentlib
+
+    const JavaVMOption* option = args->options + index;
+
+    if (!match_option(option, "-Djava.class.path", &tail) &&
+        !match_option(option, "-Dsun.java.launcher", &tail)) {
+      if (match_option(option, "-D", &tail)) {
+        const char* key = NULL;
+        const char* value = NULL;
+
+        get_key_value(tail, &key, &value);
+
+        if (strcmp(key, "sun.java.command") == 0) {
+          char *old_java_command = _java_command;
+          _java_command = os::strdup_check_oom(value, mtArguments);
+          if (old_java_command != NULL) {
+            os::free(old_java_command);
+          }
+        } else {
+          add_property(tail);
+        }
+      } else if (match_option(option, "-XX:", &tail)) { // -XX:xxxx
+        // Skip -XX:Flags= and -XX:VMOptionsFile= since those cases have
+        // already been handled
+        if (!process_argument(tail, args->ignoreUnrecognized, JVMFlag::COMMAND_LINE)) {
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+
 jint Arguments::parse_each_vm_init_arg(const JavaVMInitArgs* args, bool* patch_mod_javabase, JVMFlag::Flags origin) {
   // For match_option to return remaining or value part of option string
   const char* tail;
@@ -3266,6 +3324,17 @@ jint Arguments::finalize_vm_init_args(bool patch_mod_javabase) {
   UNSUPPORTED_OPTION(ShowRegistersOnAssert);
 #endif // CAN_SHOW_REGISTERS_ON_ASSERT
 
+#ifdef LINUX
+  if (CRaCCheckpointTo && !os::Linux::prepare_checkpoint()) {
+    return JNI_ERR;
+  }
+#else
+  if (CRaCCheckpointTo) {
+    warning("CRaC supports linux only,ignore the CRaCCheckpointTo flag.");
+    CRaCCheckpointTo = NULL;
+  }
+#endif
+
   return JNI_OK;
 }
 
@@ -3852,7 +3921,7 @@ void Arguments::handle_extra_cms_flags(const char* msg) {
 void Arguments::check_arguments_for_riscv64() {
   UNSUPPORTED_RISCV64_OPTS(EnableCoroutine || UseWispMonitor);
 }
-#endif //
+#endif // RISCV64
 
 // Parse entry point called from JNI_CreateJavaVM
 
@@ -4115,6 +4184,25 @@ jint Arguments::parse(const JavaVMInitArgs* initial_cmd_args) {
     DumpAppCDSWithKlassId = true;
   }
 
+  if (UseBigDecimalOpt) {
+    PropertyList_add(&_system_properties, new SystemProperty("java.math.BigDecimal.optimization", "true", true));
+  }
+
+  // user explicitly set MorphismLimit
+  if (!FLAG_IS_DEFAULT(MorphismLimit) && MorphismLimit > 2) {
+    FLAG_SET_ERGO(bool, PolymorphicInlining, true);
+    FLAG_SET_ERGO(intx, TypeProfileWidth, 8);
+    if (MorphismLimit > 8) {
+      FLAG_SET_ERGO(uintx, MorphismLimit, 8);
+      warning("support MorphismLimit up to 8.");
+    }
+  }
+
+  if (PolymorphicInlining && FLAG_IS_DEFAULT(MorphismLimit)) {
+    FLAG_SET_ERGO(intx, TypeProfileWidth, 8);
+    FLAG_SET_ERGO(uintx, MorphismLimit, 6);
+  }
+
   // Set object alignment values.
   set_object_alignment();
 
@@ -4162,6 +4250,17 @@ jint Arguments::apply_ergo() {
   jint code = set_aggressive_opts_flags();
   if (code != JNI_OK) {
     return code;
+  }
+
+  if (FLAG_IS_DEFAULT(UseSecondarySupersTable)) {
+    FLAG_SET_DEFAULT(UseSecondarySupersTable, VM_Version::supports_secondary_supers_table());
+  } else if (UseSecondarySupersTable && !VM_Version::supports_secondary_supers_table()) {
+    warning("UseSecondarySupersTable is not supported");
+    FLAG_SET_DEFAULT(UseSecondarySupersTable, false);
+  }
+  if (!UseSecondarySupersTable) {
+    FLAG_SET_DEFAULT(StressSecondarySupers, false);
+    FLAG_SET_DEFAULT(VerifySecondarySupers, false);
   }
 
   // Turn off biased locking for locking debug mode flags,
